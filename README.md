@@ -2,6 +2,8 @@
 
 > Token-aware context handoff for DeepSeek Harness (dsh): summarize a long session into a self-contained Markdown file, decide with measured token economics whether to continue or start fresh, and resume in a new session.
 
+> **Fork note.** This repository is a fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff). Behavior is upstream 0.3.4 with one difference: the sidebar panel, chip, and tab title are in English instead of Chinese. Install from this fork with `dsh plugin --profile desktop add github:isaevolega/dsh-context-handoff`. See [Fork changes](#fork-changes).
+
 [中文](README.zh.md) · [Publishing](docs/PUBLISHING.md) · [Design](docs/DESIGN.md) · [GitHub](https://github.com/idianzi/dsh-context-handoff)
 
 - **`/handoff`** writes a handoff document that a fresh session can read directly.
@@ -202,6 +204,26 @@ Modules: `config`, `economics`, `digest`, `summarize`, `files`, `format`, `index
 ## Publishing
 
 See [docs/PUBLISHING.md](docs/PUBLISHING.md): add repository metadata, `npm publish`, then open a PR against [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin). The market picks the entry up automatically.
+
+## Fork changes
+
+This fork tracks [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4 and translates the plugin's user interface:
+
+- `lib/client.js` — every user-visible string in the sidebar panel, the chip beside the session title, and the sidebar tab is English instead of Chinese. Tab/slot keys, HTTP routes, polling intervals, and behavior are unchanged.
+- `test/client.test.js` — the tab-title assertions follow the English strings.
+- The generated handoff file is unaffected: its language still follows the `language` config, and `auto` resolves to `en` for non-CJK conversations.
+
+Upstream's `/handoff` command output and documentation were already English; only the sidebar UI needed translating.
+
+To pull upstream changes into a clone of this fork:
+
+```sh
+git remote add upstream https://github.com/idianzi/dsh-context-handoff.git
+git fetch upstream
+git rebase upstream/main
+```
+
+Licensing is unchanged: this fork remains MIT, with the upstream copyright notice kept in [LICENSE](LICENSE).
 
 ## License
 

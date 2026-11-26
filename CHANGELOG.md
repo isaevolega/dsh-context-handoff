@@ -2,6 +2,17 @@
 
 All notable changes to `dsh-context-handoff` are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Fork] — 2026-11-26
+
+Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4. No behavior changes: the sidebar UI is English.
+
+### Changed
+
+- `lib/client.js` — the sidebar panel, the chip beside the session title, and the sidebar tab label are English instead of Chinese (38 strings). Keys, routes, polling intervals, and plugin behavior are unchanged.
+- `test/client.test.js` — the tab-title assertions follow the English strings.
+- `README.md` — fork note, install path for this fork, and a "Fork changes" section.
+- `package.json` — `repository`, `homepage`, and `bugs` point at this fork.
+
 ## [Unreleased]
 
 ### Changed (docs only)

@@ -95,10 +95,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/idianzi/dsh-context-handoff.git"
+    "url": "git+https://github.com/isaevolega/dsh-context-handoff.git"
   },
-  "homepage": "https://github.com/idianzi/dsh-context-handoff#readme",
+  "homepage": "https://github.com/isaevolega/dsh-context-handoff#readme",
   "bugs": {
-    "url": "https://github.com/idianzi/dsh-context-handoff/issues"
+    "url": "https://github.com/isaevolega/dsh-context-handoff/issues"
   }
 }
