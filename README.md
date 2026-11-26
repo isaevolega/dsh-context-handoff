@@ -209,13 +209,13 @@ See [docs/PUBLISHING.md](docs/PUBLISHING.md): add repository metadata, `npm publ
 
 ## Fork changes
 
-This fork tracks [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4 and translates the plugin's user interface:
+This fork tracks [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4 and changes two things:
 
 - `lib/client.js` — every user-visible string in the sidebar panel, the chip beside the session title, and the sidebar tab is English instead of Chinese. Tab/slot keys, HTTP routes, polling intervals, and behavior are unchanged.
 - `test/client.test.js` — the tab-title assertions follow the English strings.
 - The generated handoff file is unaffected: its language still follows the `language` config, and `auto` resolves to `en` for non-CJK conversations.
 
-Upstream's `/handoff` command output and documentation were already English; only the sidebar UI needed translating.
+**Fixed: the new session now starts.** Upstream created it with a bare `ctx.agents.create`, which leaves the agent without an agent preset — only the base tools were mounted and the first model request failed at the transport (`DeepSeek Messages transport failed`) before the resume prompt reached the model. This fork creates the session through the session controller (`sessionController.createSession({ cwd })`), the path the Web client uses, so the new session inherits the default preset, its full toolset, and the preset's model wiring. The bare-agent call remains as a fallback for compositions without that controller.
 
 To pull upstream changes into a clone of this fork:
 

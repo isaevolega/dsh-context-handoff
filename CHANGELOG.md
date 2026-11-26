@@ -4,7 +4,7 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-26
 
-Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4. No behavior changes: the sidebar UI is English.
+Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4. The sidebar UI is English, and the handoff's new session is created the way the Web client creates one.
 
 ### Changed
 
@@ -12,6 +12,11 @@ Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-han
 - `test/client.test.js` — the tab-title assertions follow the English strings.
 - `README.md` — fork note, install path for this fork, and a "Fork changes" section.
 - `package.json` — `repository`, `homepage`, and `bugs` point at this fork.
+
+### Fixed
+
+- **The new session now starts.** The plugin created it with a bare `ctx.agents.create`, which leaves the agent without an agent preset: only the five base tools were mounted, and the first model request failed at the transport with `DeepSeek Messages transport failed` before the resume prompt reached the model. `startNewSession()` now goes through the session controller (`sessionController.createSession({ cwd })`), the same path the Web client uses, so the new session inherits the default preset, its full toolset, and the preset's model wiring. The bare-agent call stays as a fallback for compositions without that controller and now mints a `session-<uuid>` identity like the client does.
+- `test/panel.test.js` — new coverage that the controller is preferred and that no bare agent is created when it is present.
 
 ## [Unreleased]
 

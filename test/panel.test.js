@@ -218,3 +218,34 @@ test('auto mode: reads the workspace switch, writes a file, starts a session onc
   assert.equal(created.followups.length, 1)
   assert.equal((await readdir(path.join(root, '.dsh/handoff'))).filter((name) => name.endsWith('.md')).length, 1)
 })
+
+test('a handoff session is created through the session controller', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-controller-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, plugin, agent, created } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
+  const requests = []
+  const followups = []
+  const newAgent = {
+    session: { id: 'session-created-by-controller' },
+    async followup(message) {
+      followups.push(message)
+    },
+  }
+  ctx.get = (name) => name === 'sessionController'
+    ? {
+        async createSession(request) {
+          requests.push(request)
+          return { agent: newAgent }
+        },
+      }
+    : undefined
+
+  const result = await plugin.generate(agent, { trigger: 'panel', newSession: true })
+  assert.equal(result.newSessionId, 'session-created-by-controller')
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].cwd, root)
+  // The controller mounts the preset itself, so no bare agent is created.
+  assert.equal(created.options, undefined)
+  assert.equal(followups.length, 1)
+  assert.match(followups[0].content[0].text, /^Read @\.dsh\/handoff\//)
+})
