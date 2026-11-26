@@ -224,6 +224,7 @@ test('a handoff session is created through the session controller', async (t) =>
   t.after(() => rm(root, { recursive: true, force: true }))
   const { ctx, plugin, agent, created } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
   const requests = []
+  const selections = []
   const followups = []
   const newAgent = {
     session: { id: 'session-created-by-controller' },
@@ -231,21 +232,85 @@ test('a handoff session is created through the session controller', async (t) =>
       followups.push(message)
     },
   }
-  ctx.get = (name) => name === 'sessionController'
-    ? {
-        async createSession(request) {
+  ctx.get = (name) => {
+    if (name === 'sessionController') {
+      return {
+        async create(request) {
           requests.push(request)
-          return { agent: newAgent }
+          return { sessionId: newAgent.session.id }
+        },
+        async selectModel(request) {
+          selections.push(request)
+          return { selected: { provider: request.provider, model: request.model } }
         },
       }
-    : undefined
+    }
+    if (name === 'workspaceRegistry') return { resolveByPath: async () => ({ id: 'workspace-1' }) }
+    return undefined
+  }
+  const agents = ctx.agents
+  ctx.agents = {
+    ...agents,
+    get(id) {
+      return id === newAgent.session.id ? newAgent : agents.get(id)
+    },
+  }
 
   const result = await plugin.generate(agent, { trigger: 'panel', newSession: true })
   assert.equal(result.newSessionId, 'session-created-by-controller')
+  // The controller attaches the session to its workspace, which keeps it out of Ungrouped.
   assert.equal(requests.length, 1)
-  assert.equal(requests[0].cwd, root)
+  assert.deepEqual(requests[0], { workspaceId: 'workspace-1' })
   // The controller mounts the preset itself, so no bare agent is created.
   assert.equal(created.options, undefined)
+  // The new session runs the finished conversation's model, not the deployment default.
+  assert.equal(selections.length, 1)
+  assert.equal(selections[0].sessionId, 'session-created-by-controller')
+  assert.equal(selections[0].provider, 'test-provider')
+  assert.equal(selections[0].model, 'test-model')
   assert.equal(followups.length, 1)
   assert.match(followups[0].content[0].text, /^Read @\.dsh\/handoff\//)
 })
+
+test('the bare fallback mounts the default preset, the source route, and the workspace', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-bare-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, plugin, agent, created } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
+  const mounted = []
+  const attached = []
+  ctx.get = (name) => {
+    if (name === 'agentPresets') {
+      return {
+        async resolve(requested) {
+          assert.equal(requested, undefined)
+          return { id: 'standard' }
+        },
+        async mount(agentCtx, presetId) {
+          mounted.push({ agentCtx, presetId })
+        },
+      }
+    }
+    if (name === 'workspaceRegistry') {
+      return {
+        resolveByPath: async () => ({ id: 'workspace-1' }),
+        get: () => ({
+          async attachSession(sessionId) {
+            attached.push(sessionId)
+          },
+        }),
+      }
+    }
+    return undefined
+  }
+
+  const result = await plugin.generate(agent, { trigger: 'panel', newSession: true })
+  assert.equal(created.options.meta.agentPreset, 'standard')
+  assert.equal(created.options.agentOptions.provider, 'test-provider')
+  assert.equal(created.options.agentOptions.model, 'test-model')
+  assert.equal(typeof created.options.setup, 'function')
+  await created.options.setup({})
+  assert.deepEqual(mounted.map((entry) => entry.presetId), ['standard'])
+  assert.deepEqual(attached, [result.newSessionId])
+  assert.equal(created.followups.length, 1)
+})
+

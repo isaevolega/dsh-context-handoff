@@ -2,7 +2,7 @@
 
 > Token-aware context handoff for DeepSeek Harness (dsh): summarize a long session into a self-contained Markdown file, decide with measured token economics whether to continue or start fresh, and resume in a new session.
 
-> **Fork note.** This repository is a fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff). Behavior is upstream 0.3.4 with one difference: the sidebar panel, chip, and tab title are in English instead of Chinese. Install from this fork with `dsh plugin --profile desktop add github:isaevolega/dsh-context-handoff`. See [Fork changes](#fork-changes).
+> **Fork note.** This repository is a fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff). Behavior is upstream 0.3.4 plus two changes: the sidebar panel, chip, and tab title are in English instead of Chinese, and the handoff session is created the way the Web client creates one (full agent preset, model route copied from the source session, attached to its workspace). Install from this fork with `dsh plugin --profile desktop add github:isaevolega/dsh-context-handoff`. See [Fork changes](#fork-changes).
 
 [中文](README.zh.md) · [Publishing](docs/PUBLISHING.md) · [Design](docs/DESIGN.md) · [GitHub](https://github.com/idianzi/dsh-context-handoff)
 
@@ -215,7 +215,13 @@ This fork tracks [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-co
 - `test/client.test.js` — the tab-title assertions follow the English strings.
 - The generated handoff file is unaffected: its language still follows the `language` config, and `auto` resolves to `en` for non-CJK conversations.
 
-**Fixed: the new session now starts.** Upstream created it with a bare `ctx.agents.create`, which leaves the agent without an agent preset — only the base tools were mounted and the first model request failed at the transport (`DeepSeek Messages transport failed`) before the resume prompt reached the model. This fork creates the session through the session controller (`sessionController.createSession({ cwd })`), the path the Web client uses, so the new session inherits the default preset, its full toolset, and the preset's model wiring. The bare-agent call remains as a fallback for compositions without that controller.
+**Fixed: the new session now starts, with the client's agent, in its workspace group.**
+
+Upstream created the handoff session with a bare `ctx.agents.create`, which mounts no agent preset. The agent then ran with the five base tools only and a degraded system prompt, and its first request died at the transport (`DeepSeek Messages transport failed`) before the resume prompt reached the model. The workspace was never attached either, so the session landed under **Ungrouped**.
+
+This fork creates the session through the host session controller — `sessionController.create({ workspaceId })`, the path "+ new chat" takes — so the new session resolves and mounts the default preset (full toolset, real system prompt) and joins its workspace. The model route is then copied from the source session's last request header with `sessionController.selectModel(...)`: the deployment default can name a different provider than the conversation actually ran on, and the digest target is a third, unrelated model. A bare-agent fallback remains for compositions without a controller, and it mounts the preset, forwards the route, and attaches the workspace itself.
+
+The panel report now tells you which path was used, e.g. `New session: session-… · created via session controller · f5ai/deepseek-v4.1-flash`.
 
 To pull upstream changes into a clone of this fork:
 
