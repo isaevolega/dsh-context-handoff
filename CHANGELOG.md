@@ -30,6 +30,16 @@ Two goals for one objective is a duplicate-work trap, and a leftover that is arm
 
 The idle auto-writer treats the refusal as "not yet": it releases its cooldown reservation (`lastAuto`), so the handoff fires on the next idle event after the job settles instead of being held back for the whole cooldown window.
 
+### Changed — the new session no longer takes the turn away from you
+
+Pressing the button while the agent was idle still produced a new chat that began working immediately, because the handoff admitted the resume prompt through `sessionController.prompt` — the same RPC the composer uses — and any admitted prompt starts a turn. `queue` and `steer` only decide how such a prompt waits for a running turn; there is no "append without running" mode, so "leave the turn to the person" has to mean "admit nothing".
+
+`resumeMode` now chooses: `manual` (the default) creates the session and sends nothing — the client switches to it, the composer is empty, the panel prints `New session: … · left idle, the turn is yours` together with the exact line to send; `brief` admits a prompt that reads the file, names the one next step and stops; `auto` is the old behaviour. The file, its resume line, and the goal transfer are identical in all three.
+
+### Added — closing the source goal, and the goal transfer rounding
+
+See the two goal entries above; both defaults (`handoffGoal: paused`, `handoffGoalSource: clear`) are chosen so a handoff never leaves two live goals behind.
+
 ### Changed — the digest asks for reasoning off
 
 The summary runs on the session's route, so it inherits that route's reasoning effort. Measured against the real route (`deepseek-account/deepseek-flash`, `reasoningEffort: high`): a 40k-token summarization request with the handoff's own output cap (1738 tokens) spent 1358 of them on thinking, wrote text only after the thinking stopped, and finished with `max_tokens` at 1577 characters of answer. A slightly longer chain of thought leaves no room for text at all, which is the shape the ledger recorded — `the summarization model returned no text`, 0 output tokens, and an empty body.

@@ -23,7 +23,7 @@ function makeMeter(promptTokens) {
   }
 }
 
-function makeWorld(root, { promptTokens = 50000, auto = false, recommendAtRatio = 1 } = {}) {
+function makeWorld(root, { promptTokens = 50000, auto = false, recommendAtRatio = 1, resumeMode = 'auto' } = {}) {
   const registered = []
   const routes = new Map()
   const created = { options: undefined, followups: [] }
@@ -114,6 +114,7 @@ function makeWorld(root, { promptTokens = 50000, auto = false, recommendAtRatio 
     autoCooldownMinutes: 0,
     recommendAtRatio,
     recommendMaxTokens: 1000000,
+    resumeMode,
   })
   return { ctx, plugin, agent, registered, routes, created }
 }
@@ -329,6 +330,79 @@ test('the bare fallback mounts the default preset and attaches the workspace', a
   assert.deepEqual(mounted.map((entry) => entry.presetId), ['standard'])
   assert.deepEqual(attached, [result.newSessionId])
   assert.equal(created.followups.length, 1)
+})
+
+test('resumeMode=manual creates the session and sends nothing, so the turn stays with the user', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-manual-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, plugin, agent } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55, resumeMode: 'manual' })
+  const prompts = []
+  const newAgent = { session: { id: 'session-manual', header: { cwd: root } }, async followup() {} }
+  ctx.get = (name) => {
+    if (name === 'sessionController') {
+      return {
+        async create() {
+          return { sessionId: newAgent.session.id }
+        },
+        async prompt(request) {
+          prompts.push(request)
+          return { accepted: true }
+        },
+      }
+    }
+    if (name === 'workspaceRegistry') return { resolveByPath: async () => ({ id: 'workspace-1' }) }
+    return undefined
+  }
+  const agents = ctx.agents
+  ctx.agents = {
+    ...agents,
+    get(id) {
+      return id === newAgent.session.id ? newAgent : agents.get(id)
+    },
+  }
+
+  const result = await plugin.generate(agent, { trigger: 'panel', newSession: true })
+  assert.equal(result.newSessionId, 'session-manual')
+  // No admitted prompt: any admitted prompt starts a turn.
+  assert.equal(prompts.length, 0)
+  assert.equal(plugin.createdAgents.has('session-manual'), true)
+  assert.match(result.text, /left idle, the turn is yours/)
+  assert.match(result.text, /Send there: Read @\.dsh\/handoff\//)
+})
+
+test('resumeMode=brief sends a read-and-stop prompt instead of "continue"', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-brief-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, plugin, agent } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55, resumeMode: 'brief' })
+  const prompts = []
+  const newAgent = { session: { id: 'session-brief', header: { cwd: root } }, async followup() {} }
+  ctx.get = (name) => {
+    if (name === 'sessionController') {
+      return {
+        async create() {
+          return { sessionId: newAgent.session.id }
+        },
+        async prompt(request) {
+          prompts.push(request)
+          return { accepted: true }
+        },
+      }
+    }
+    if (name === 'workspaceRegistry') return { resolveByPath: async () => ({ id: 'workspace-1' }) }
+    return undefined
+  }
+  const agents = ctx.agents
+  ctx.agents = {
+    ...agents,
+    get(id) {
+      return id === newAgent.session.id ? newAgent : agents.get(id)
+    },
+  }
+
+  await plugin.generate(agent, { trigger: 'panel', newSession: true })
+  assert.equal(prompts.length, 1)
+  assert.match(prompts[0].content[0].text, /do not start working until I say so/)
+  assert.doesNotMatch(prompts[0].content[0].text, /continue from the/)
 })
 
 test('a failed first turn of a handoff session leaves a diagnostic record', async (t) => {
