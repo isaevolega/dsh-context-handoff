@@ -4,6 +4,17 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-27
 
+### Fixed — the first prompt now really goes through prompt admission
+
+The 0.3.5-fork.6 change that was supposed to admit the first prompt through `sessionController.prompt` never ran. Two faults kept it on the `agent.followup` fallback:
+
+1. `controllerCall()` resolved a controller method as `(request) => direct.call(controller, request)`. It dropped every argument after the first, so `SessionController.prompt(request, signal)` was called without its signal.
+2. `SessionController.prompt` opens with `signal.throwIfAborted()`. A missing signal is therefore a `TypeError`, and the `agent.followup` fallback swallowed it. The fallback only reported through `ctx.logger.warn`, which this desktop profile does not surface anywhere.
+
+The durable evidence is the recorded message source. A typed message records `{"kind":"user","rpcId":…,"clientTimeZone":"Asia/Yekaterinburg"}`; every handoff session's first message recorded a bare `{"kind":"user"}`, and the host's context arrived as loose `<system-reminder>` text ending in `Browser time zone for this request: unavailable`.
+
+`controllerCall()` now forwards every argument, `sendFirstPrompt()` passes `AbortSignal.timeout(30000)`, and both outcomes — admitted, or fell back with the error chain — are written to `.dsh/handoff/diagnostics.log`, so a silent fallback can no longer look like success. The controller stub in `test/panel.test.js` now mirrors the real signature and throws when the signal is missing; that is what catches this class of bug.
+
 ### Added — raw transport diagnostics
 
 `DeepSeek Messages transport failed` reaches the session log without its cause: `@deepseek-ai/dsh-llm` converts every adapter throw into a terminal `{message, code}` failure chunk (`adapterFailureChunk` → `normalizeLlmFailure`), so `agent/error` only ever rebuilds a bare `LlmError`.

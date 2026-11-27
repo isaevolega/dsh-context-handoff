@@ -247,7 +247,13 @@ test('a handoff session is created through the session controller', async (t) =>
           selections.push(request)
           return { selected: { provider: request.provider, model: request.model } }
         },
-        async prompt(request) {
+        async prompt(request, signal) {
+          // `SessionController.prompt` opens with `signal.throwIfAborted()`, so an
+          // omitted signal rejects instead of defaulting. Without this assertion
+          // the plugin's silent `agent.followup` fallback looked like success.
+          if (signal === undefined || typeof signal.throwIfAborted !== 'function') {
+            throw new TypeError("Cannot read properties of undefined (reading 'throwIfAborted')")
+          }
           prompts.push(request)
           return { accepted: true }
         },
