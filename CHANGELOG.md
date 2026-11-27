@@ -18,6 +18,8 @@ The plugin deliberately does not create that goal itself: `goals.create` arms au
 
 `test/plugin.test.js` covers the running-job refusal, a composition without the registry, and both the goal and no-goal shapes.
 
+The idle auto-writer treats the refusal as "not yet": it releases its cooldown reservation (`lastAuto`), so the handoff fires on the next idle event after the job settles instead of being held back for the whole cooldown window.
+
 ### Changed — the digest asks for reasoning off
 
 The summary runs on the session's route, so it inherits that route's reasoning effort. Measured against the real route (`deepseek-account/deepseek-flash`, `reasoningEffort: high`): a 40k-token summarization request with the handoff's own output cap (1738 tokens) spent 1358 of them on thinking, wrote text only after the thinking stopped, and finished with `max_tokens` at 1577 characters of answer. A slightly longer chain of thought leaves no room for text at all, which is the shape the ledger recorded — `the summarization model returned no text`, 0 output tokens, and an empty body.
