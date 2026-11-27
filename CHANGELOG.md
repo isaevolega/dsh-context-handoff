@@ -12,15 +12,16 @@ Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-han
 - `test/client.test.js` — the tab-title assertions follow the English strings.
 - `README.md` — fork note, install path for this fork, and a "Fork changes" section.
 - `package.json` — `repository`, `homepage`, and `bugs` point at this fork.
-- The panel report now names the new session, how it was created (`session controller` or `bare agent`), and the model route it runs, instead of always printing the manual "start a new session and send" instructions.
+- The panel report now names the new session and how it was created (`session controller` or `bare agent`), instead of always printing the manual "start a new session and send" instructions.
 
 ### Fixed
 
-- **The new session now starts with the client's agent and lands in its workspace group.** Two independent faults made the handoff session useless:
-  1. The plugin created it with a bare `ctx.agents.create`, which mounts no agent preset. The agent then ran with the five base tools only (no `read`, `write`, `pwsh`, `subagent`, …) and a degraded system prompt, and its first request died at the transport with `DeepSeek Messages transport failed` before the resume prompt reached the model. The creation now goes through the host session controller (`sessionController.create({ workspaceId })`), which resolves and mounts the default preset exactly like "+ new chat".
+- **The new session is now the client's agent, in its workspace group.** Two faults made the handoff session useless:
+  1. The plugin created it with a bare `ctx.agents.create`, which mounts no agent preset. The agent then ran with the five base tools only (no `read`, `write`, `pwsh`, `subagent`, …) and a degraded system prompt. The creation now goes through the host session controller (`sessionController.create({ workspaceId })`), which resolves and mounts the default preset exactly like "+ new chat".
   2. The workspace was never attached, so the session appeared under **Ungrouped**. The controller call passes the workspace id resolved from the session directory, and the bare fallback calls `attachSession()` itself.
-  3. The model route was taken from the digest target, i.e. the summarization model, which can differ from the model the conversation actually runs on — the new session then faced a provider its existing toolset and prompt were never used with. The route now comes from the source session's last request header and is installed with `sessionController.selectModel({ sessionId, provider, model, reasoningEffort })`. This also persists that model as the deployment default, which is what the Web client does when the user picks a model.
-- `test/panel.test.js` — coverage for the controller path (workspace id, model switch, no bare agent) and for the fallback (preset mounted, route forwarded, workspace attached).
+- **The plugin leaves the model alone.** It never calls `sessionController.selectModel(...)`: the controller applies the deployment default, which is exactly what a hand-written "+ new chat" gets. Picking a route here would spend the user's balance on a model they did not choose for that conversation.
+- **A failed handoff session now leaves evidence.** The host records only the model-facing failure text, so `<workspace>/.dsh/handoff/diagnostics.log` now receives the creation record (path, workspace, source session) and the full error chain of any `agent/error` or failed `turn/end` in a session this plugin created.
+- `test/panel.test.js` — coverage for the controller path (workspace id, no model call, no bare agent), for the fallback (preset mounted, no route override, workspace attached), and for the diagnostics record.
 
 ## [Unreleased]
 

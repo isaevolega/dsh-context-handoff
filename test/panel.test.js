@@ -182,7 +182,6 @@ test('panel bridge: state, guarded toggle, run, and ack', async (t) => {
   assert.equal(run.body.ok, true)
   assert.ok(run.body.result.newSessionId)
   assert.equal(created.options.meta.cwd, root)
-  assert.equal(created.options.agentOptions.provider, 'test-provider')
   assert.equal(created.followups.length, 1)
   assert.match(created.followups[0].content[0].text, /^Read @\.dsh\/handoff\//)
 
@@ -227,7 +226,7 @@ test('a handoff session is created through the session controller', async (t) =>
   const selections = []
   const followups = []
   const newAgent = {
-    session: { id: 'session-created-by-controller' },
+    session: { id: 'session-created-by-controller', header: { cwd: root } },
     async followup(message) {
       followups.push(message)
     },
@@ -263,16 +262,13 @@ test('a handoff session is created through the session controller', async (t) =>
   assert.deepEqual(requests[0], { workspaceId: 'workspace-1' })
   // The controller mounts the preset itself, so no bare agent is created.
   assert.equal(created.options, undefined)
-  // The new session runs the finished conversation's model, not the deployment default.
-  assert.equal(selections.length, 1)
-  assert.equal(selections[0].sessionId, 'session-created-by-controller')
-  assert.equal(selections[0].provider, 'test-provider')
-  assert.equal(selections[0].model, 'test-model')
+  // The plugin never picks a model: the controller's deployment default stands.
+  assert.equal(selections.length, 0)
   assert.equal(followups.length, 1)
   assert.match(followups[0].content[0].text, /^Read @\.dsh\/handoff\//)
 })
 
-test('the bare fallback mounts the default preset, the source route, and the workspace', async (t) => {
+test('the bare fallback mounts the default preset and attaches the workspace', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-bare-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const { ctx, plugin, agent, created } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
@@ -305,12 +301,44 @@ test('the bare fallback mounts the default preset, the source route, and the wor
 
   const result = await plugin.generate(agent, { trigger: 'panel', newSession: true })
   assert.equal(created.options.meta.agentPreset, 'standard')
-  assert.equal(created.options.agentOptions.provider, 'test-provider')
-  assert.equal(created.options.agentOptions.model, 'test-model')
+  // No route override: the deployment default model applies, as in the controller path.
+  assert.equal(created.options.agentOptions, undefined)
   assert.equal(typeof created.options.setup, 'function')
   await created.options.setup({})
   assert.deepEqual(mounted.map((entry) => entry.presetId), ['standard'])
   assert.deepEqual(attached, [result.newSessionId])
   assert.equal(created.followups.length, 1)
 })
+
+test('a failed first turn of a handoff session leaves a diagnostic record', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-diagnostics-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, plugin, agent } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
+  const listeners = new Map()
+  ctx.on = (name, handler) => {
+    listeners.set(name, handler)
+    return () => {}
+  }
+  plugin.installDiagnostics()
+
+  const newAgent = { session: { id: 'session-diagnosed', header: { cwd: root } }, async followup() {} }
+  plugin.createdAgents.set(newAgent.session.id, newAgent)
+
+  const cause = new Error('connect ECONNREFUSED 127.0.0.1:9')
+  cause.name = 'TypeError'
+  const error = new Error('DeepSeek Messages transport failed')
+  error.code = 'TRANSPORT'
+  error.cause = cause
+  listeners.get('agent/error')({ agent: newAgent, error })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+
+  const log = await readFile(path.join(root, '.dsh/handoff/diagnostics.log'), 'utf8')
+  assert.match(log, /DeepSeek Messages transport failed/)
+  assert.match(log, /ECONNREFUSED/)
+  // Sessions the plugin did not create stay silent.
+  listeners.get('agent/error')({ agent, error })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.equal((await readFile(path.join(root, '.dsh/handoff/diagnostics.log'), 'utf8')).trim().split('\n').length, log.trim().split('\n').length)
+})
+
 

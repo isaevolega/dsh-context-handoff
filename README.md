@@ -2,7 +2,7 @@
 
 > Token-aware context handoff for DeepSeek Harness (dsh): summarize a long session into a self-contained Markdown file, decide with measured token economics whether to continue or start fresh, and resume in a new session.
 
-> **Fork note.** This repository is a fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff). Behavior is upstream 0.3.4 plus two changes: the sidebar panel, chip, and tab title are in English instead of Chinese, and the handoff session is created the way the Web client creates one (full agent preset, model route copied from the source session, attached to its workspace). Install from this fork with `dsh plugin --profile desktop add github:isaevolega/dsh-context-handoff`. See [Fork changes](#fork-changes).
+> **Fork note.** This repository is a fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff). Behavior is upstream 0.3.4 plus two changes: the sidebar panel, chip, and tab title are in English instead of Chinese, and the handoff session is created the way the Web client creates one (full agent preset, joined to its workspace, model left at the deployment default). Install from this fork with `dsh plugin --profile desktop add github:isaevolega/dsh-context-handoff`. See [Fork changes](#fork-changes).
 
 [中文](README.zh.md) · [Publishing](docs/PUBLISHING.md) · [Design](docs/DESIGN.md) · [GitHub](https://github.com/idianzi/dsh-context-handoff)
 
@@ -215,13 +215,17 @@ This fork tracks [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-co
 - `test/client.test.js` — the tab-title assertions follow the English strings.
 - The generated handoff file is unaffected: its language still follows the `language` config, and `auto` resolves to `en` for non-CJK conversations.
 
-**Fixed: the new session now starts, with the client's agent, in its workspace group.**
+**Fixed: the new session is the client's agent, in its workspace group.**
 
-Upstream created the handoff session with a bare `ctx.agents.create`, which mounts no agent preset. The agent then ran with the five base tools only and a degraded system prompt, and its first request died at the transport (`DeepSeek Messages transport failed`) before the resume prompt reached the model. The workspace was never attached either, so the session landed under **Ungrouped**.
+Upstream created the handoff session with a bare `ctx.agents.create`, which mounts no agent preset. The agent then ran with the five base tools only and a degraded system prompt. The workspace was never attached either, so the session landed under **Ungrouped**.
 
-This fork creates the session through the host session controller — `sessionController.create({ workspaceId })`, the path "+ new chat" takes — so the new session resolves and mounts the default preset (full toolset, real system prompt) and joins its workspace. The model route is then copied from the source session's last request header with `sessionController.selectModel(...)`: the deployment default can name a different provider than the conversation actually ran on, and the digest target is a third, unrelated model. A bare-agent fallback remains for compositions without a controller, and it mounts the preset, forwards the route, and attaches the workspace itself.
+This fork creates the session through the host session controller — `sessionController.create({ workspaceId })`, the path "+ new chat" takes — so the new session resolves and mounts the default preset (full toolset, real system prompt) and joins its workspace. A bare-agent fallback remains for compositions without a controller, and it mounts the preset and attaches the workspace itself.
 
-The panel report now tells you which path was used, e.g. `New session: session-… · created via session controller · f5ai/deepseek-v4.1-flash`.
+The model is left alone. The plugin never calls `selectModel`: the new session keeps the deployment default, exactly like a hand-written "+ new chat", so it cannot spend your balance on a route you did not pick.
+
+**Diagnostics.** If a handoff session fails its first turn, `<workspace>/.dsh/handoff/diagnostics.log` records how the session was created (path, workspace, source session) and the full error chain behind the model-facing failure text.
+
+While that file exists, the panel reports the new session and its creation path, e.g. `New session: session-… · created via session controller`.
 
 To pull upstream changes into a clone of this fork:
 
