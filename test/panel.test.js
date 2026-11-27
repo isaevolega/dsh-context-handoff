@@ -183,7 +183,7 @@ test('panel bridge: state, guarded toggle, run, and ack', async (t) => {
   assert.ok(run.body.result.newSessionId)
   assert.equal(created.options.meta.cwd, root)
   assert.equal(created.followups.length, 1)
-  assert.match(created.followups[0].content[0].text, /^Read @\.dsh\/handoff\//)
+  assert.match(created.followups[0].content[0].text, /^Handoff file: \.dsh\/handoff\//)
 
   plugin.lastAutoBySource.set(agent.session.id, {
     newSessionId: run.body.result.newSessionId,
@@ -265,7 +265,7 @@ test('a handoff session is created through the session controller', async (t) =>
   // The plugin never picks a model: the controller's deployment default stands.
   assert.equal(selections.length, 0)
   assert.equal(followups.length, 1)
-  assert.match(followups[0].content[0].text, /^Read @\.dsh\/handoff\//)
+  assert.match(followups[0].content[0].text, /^Handoff file: \.dsh\/handoff\//)
 })
 
 test('the bare fallback mounts the default preset and attaches the workspace', async (t) => {
@@ -340,40 +340,3 @@ test('a failed first turn of a handoff session leaves a diagnostic record', asyn
   await new Promise((resolve) => setTimeout(resolve, 50))
   assert.equal((await readFile(path.join(root, '.dsh/handoff/diagnostics.log'), 'utf8')).trim().split('\n').length, log.trim().split('\n').length)
 })
-
-test('the llm probe keeps the raw cause behind a swallowed transport failure', async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-probe-'))
-  t.after(() => rm(root, { recursive: true, force: true }))
-  const { ctx, plugin } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
-  const cause = new Error('connect ECONNREFUSED 127.0.0.1:9')
-  const raw = new Error('DeepSeek Messages transport failed')
-  raw.code = 'TRANSPORT'
-  raw.cause = cause
-  const llm = {
-    async prepareCall() {
-      return {
-        retryPolicy: { maxRetries: 5 },
-        stream() {
-          return (async function* failing() { throw raw })()
-        },
-      }
-    },
-  }
-  ctx.get = (name) => (name === 'llm' ? llm : undefined)
-  plugin.lastCreatedCwd = root
-  plugin.installLlmProbe()
-
-  const prepared = await llm.prepareCall()
-  // The proxy passes every other field through untouched.
-  assert.equal(prepared.retryPolicy.maxRetries, 5)
-  await assert.rejects(
-    (async () => { for await (const chunk of prepared.stream({})) void chunk })(),
-    (error) => error === raw,
-  )
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  const log = await readFile(path.join(root, '.dsh/handoff/diagnostics.log'), 'utf8')
-  assert.match(log, /model stream failure \(raw\)/)
-  assert.match(log, /ECONNREFUSED/)
-})
-
-

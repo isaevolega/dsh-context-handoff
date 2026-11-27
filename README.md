@@ -223,7 +223,9 @@ This fork creates the session through the host session controller — `sessionCo
 
 The model is left alone. The plugin never calls `selectModel`: the new session keeps the deployment default, exactly like a hand-written "+ new chat", so it cannot spend your balance on a route you did not pick.
 
-**Diagnostics.** If a handoff session fails its first turn, `<workspace>/.dsh/handoff/diagnostics.log` records how the session was created (path, workspace, source session) and the raw error chain behind the model-facing failure text. The host converts an adapter failure into a finish event that keeps only the message and code, so the plugin observes the model stream through a pass-through wrapper — installed only after it has created a session — that rethrows the original error unchanged.
+The injected first message names the handoff file as a plain workspace-relative path. An `@` reference is a composer feature — the client stages the file and registers a receipt — and a host-injected message never passes that registration, so the `@` form stays only in the instruction the panel prints for a person.
+
+**Diagnostics.** If a handoff session fails its first turn, `<workspace>/.dsh/handoff/diagnostics.log` records how the session was created (path, workspace, source session) and the error chain of the failed turn. The plugin only listens to agent events and writes files; it never wraps or replaces a host service.
 
 The panel reports the new session and its creation path, e.g. `New session: session-… · created via session controller`.
 
