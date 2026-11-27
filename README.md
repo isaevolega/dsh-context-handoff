@@ -229,6 +229,8 @@ The first prompt is admitted through `sessionController.prompt`, the RPC the com
 
 `DeepSeek Messages transport failed` arrives in that log without its cause, because `@deepseek-ai/dsh-llm` reduces every adapter throw to a `{message, code}` failure chunk before the session sees it. So the plugin also subscribes to the Node `diagnostics_channel` events of the global `fetch` (`undici:request:create`, `undici:request:headers`, `undici:request:error`, `undici:client:connectError`) and appends the raw records for `api.deepseek.com` to the same log on every handoff turn. That is subscription only — no wrapping, no proxy, no replacement — and it answers the question the session log cannot: did the request leave the process, and if it did not, which error stopped it.
 
+For the one window that matters — the new session's first turn — the plugin also observes the global `fetch` itself, because a rejection that happens before the dispatcher leaves no channel event at all. That observation calls `fetch` with the very same arguments, records the rejection with its cause chain, and rethrows the identical error object; it is removed on the first `turn/end` of that session and by a three-minute timer. Nothing else in the process sees a different `fetch`.
+
 The panel reports the new session and its creation path, e.g. `New session: session-… · created via session controller`.
 
 To pull upstream changes into a clone of this fork:

@@ -12,6 +12,8 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 This is subscription only: nothing is wrapped, proxied, or replaced, and the buffer is dropped with the effect scope. It answers the one question the session log cannot: did the request leave the process, and if it did not, which fetch error stopped it.
 
+A `fetch` that rejects before the dispatcher — an unusable argument, a refused connection, a dead socket — leaves no channel event at all. That gap is closed for the one window that matters: while the new session's first turn runs, the plugin observes the global `fetch`, calls it with the same arguments, records a rejection together with its cause chain, and rethrows the very same error object. The observation is removed on the first `turn/end` of that session and by a three-minute timer, whichever comes first.
+
 ## [Fork] — 2026-11-26
 
 Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4. The sidebar UI is English, and the handoff's new session is created the way the Web client creates one.
