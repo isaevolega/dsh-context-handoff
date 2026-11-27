@@ -190,6 +190,41 @@ test('plugin: falls back to a deterministic digest when the model fails', async 
   assert.match(content, /## Next steps/)
 })
 
+test('plugin: an empty model answer still writes the deterministic digest', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-empty-answer-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  // The model completes without a single text delta (a reasoning-only answer,
+  // or a stream cut after the headers). `streamSummary` therefore resolves with
+  // an empty string instead of throwing, which used to leave `body` as '' and
+  // skip the fallback digest: the file kept the heading and lost the content.
+  const { ctx, registered } = makeCtx({
+    stream: async function* () {
+      yield { type: 'usage', usage: { inputTokens: 100, outputTokens: 0 } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    },
+  })
+  new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  const agent = makeAgent(root)
+  const result = await registered[0].handler({ agent, rawInput: 'now', signal: new AbortController().signal })
+  assert.equal(result.kind, 'success')
+  assert.match(result.text, /generator: fallback/)
+  assert.match(result.text, /Fallback reason: the summarization model returned no text/)
+  // The finish reason and the usage travel with the fallback reason: together
+  // they separate "the model answered nothing" from "the stream died early".
+  assert.match(result.text, /finish stop, 0 output tokens/)
+
+  const dir = path.join(root, '.dsh/handoff')
+  const file = (await readdir(dir)).find((name) => name.endsWith('.md'))
+  const content = await readFile(path.join(dir, file), 'utf8')
+  assert.match(content, /generator: "fallback"/)
+  assert.match(content, /## Mission/)
+  assert.match(content, /Build a token-aware handoff plugin/)
+  assert.match(content, /## Next steps/)
+  const meta = await readHandoffMeta(path.join(dir, file))
+  assert.equal(meta.generator, 'fallback')
+  assert.ok(meta.digest_tokens > 0)
+})
+
 test('plugin: redacts credentials from the written file', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-redact-'))
   t.after(() => rm(root, { recursive: true, force: true }))

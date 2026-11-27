@@ -4,6 +4,20 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-27
 
+### Fixed — an empty model answer no longer ships an empty handoff
+
+A handoff whose summary came back as an empty string was written with its frontmatter, the resume card, and the `# Handoff: …` heading, and nothing else: no mission, no next steps. The deterministic fallback never ran.
+
+`generate()` assigns the sanitized answer to `body` and then throws when it is blank, so the catch block saw `body === ''` — not `undefined`, which is the test that selects the fallback digest. The empty string survived into the render and silenced the fallback. The catch now clears `body`, so a blank answer produces the full deterministic digest.
+
+The last affected file was 208 digest tokens of shell with `summary_output_tokens: 0`, which matches the shape a reasoning route produces when its reasoning consumes the whole output cap before any text is emitted.
+
+### Added — the failed summary now leaves evidence
+
+The fallback reason names the finish kind and the output tokens (`… returned no text (finish stop, 0 output tokens)`), which separates "the model answered nothing" from "the stream died after its headers". The undici records of the summarization request are also flushed to `.dsh/handoff/diagnostics.log` under `summarization request (<mode> mode) after the digest fell back: <reason>`, so the raw transport of a failed digest is no longer dropped on the floor.
+
+`test/plugin.test.js` covers the blank-answer path: a stream that ends with no text delta must still write `## Mission`, the first user request, and `## Next steps`.
+
 ### Fixed — the first prompt now really goes through prompt admission
 
 The 0.3.5-fork.6 change that was supposed to admit the first prompt through `sessionController.prompt` never ran. Two faults kept it on the `agent.followup` fallback:
