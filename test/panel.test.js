@@ -341,4 +341,39 @@ test('a failed first turn of a handoff session leaves a diagnostic record', asyn
   assert.equal((await readFile(path.join(root, '.dsh/handoff/diagnostics.log'), 'utf8')).trim().split('\n').length, log.trim().split('\n').length)
 })
 
+test('the llm probe keeps the raw cause behind a swallowed transport failure', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-probe-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, plugin } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
+  const cause = new Error('connect ECONNREFUSED 127.0.0.1:9')
+  const raw = new Error('DeepSeek Messages transport failed')
+  raw.code = 'TRANSPORT'
+  raw.cause = cause
+  const llm = {
+    async prepareCall() {
+      return {
+        retryPolicy: { maxRetries: 5 },
+        stream() {
+          return (async function* failing() { throw raw })()
+        },
+      }
+    },
+  }
+  ctx.get = (name) => (name === 'llm' ? llm : undefined)
+  plugin.lastCreatedCwd = root
+  plugin.installLlmProbe()
+
+  const prepared = await llm.prepareCall()
+  // The proxy passes every other field through untouched.
+  assert.equal(prepared.retryPolicy.maxRetries, 5)
+  await assert.rejects(
+    (async () => { for await (const chunk of prepared.stream({})) void chunk })(),
+    (error) => error === raw,
+  )
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  const log = await readFile(path.join(root, '.dsh/handoff/diagnostics.log'), 'utf8')
+  assert.match(log, /model stream failure \(raw\)/)
+  assert.match(log, /ECONNREFUSED/)
+})
+
 
