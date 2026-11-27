@@ -4,6 +4,12 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-27
 
+### Added — the panel says what the new session will do
+
+`resumeMode` is a plugin config field, so the only way to change it is the profile patch layer, and nothing in the UI showed the value in force: the panel could not tell a `manual` composition from a `brief` or `auto` one until a handoff had already run. `GET /context-handoff/api/state` now returns `resumeMode`, and the card prints one muted line naming it — "New session: created and left idle, the turn is yours (resumeMode=manual)", "… it reads the handoff file, names the next step, then stops (resumeMode=brief)", or "… it reads the handoff file and continues on its own (resumeMode=auto)".
+
+The line is presentational only: an older composition that omits the field simply renders nothing.
+
 ### Added — the handoff button waits for background jobs
 
 A background job belongs to the agent that started it: creating a new session neither carries it over nor stops it, its output stays in the old chat, and disposing that agent (`owner disposed`) cancels it. Handing off while one ran therefore abandoned the job silently.

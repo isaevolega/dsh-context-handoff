@@ -161,6 +161,8 @@ test('panel bridge: state, guarded toggle, run, and ack', async (t) => {
   assert.equal(state.body.promptTokens, 50000)
   assert.equal(state.body.recommendedAt, 119808)
   assert.equal(state.body.autoNewSession, true)
+  // The card prints what the new session will do, so the mode in force is visible without reading the config.
+  assert.equal(state.body.resumeMode, 'auto')
 
   const refused = await httpRequest(plugin.handleAutoRoute, plugin, {
     method: 'POST',
