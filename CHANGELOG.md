@@ -20,7 +20,13 @@ The new `handoffGoal` config chooses what happens next: `file` (record only), `p
 
 A re-creation failure (no `agents` registry, a goal already present, a service that changed shape) is logged and never fails the handoff: the file already carries the objective.
 
-`test/plugin.test.js` covers the running-job refusal, a composition without the registry, the three goal modes, the failed re-creation, and both the goal and no-goal file shapes.
+### Added — the source goal is closed once the new session owns it
+
+Two goals for one objective is a duplicate-work trap, and a leftover that is armed or offers Resume is how the abandoned chat gets revived by accident. After a successful transfer the plugin now closes the source goal, chosen by `handoffGoalSource`: `clear` (the default — removes the current goal and writes a tombstone, making no claim about the work), `complete` (records the objective as achieved), `pause` (stops continuation but keeps a Resume chip), or `keep`.
+
+`clear` is the default because a handoff says "somewhere else now", not "done": marking a transferred goal complete would put a false achievement in the durable log. `pause` is skipped when the phase is not `active`, since the transition table only accepts an active goal, and a failure to close is logged, never fatal. The ledger records `goal_source_closed`.
+
+`test/plugin.test.js` covers the running-job refusal, a composition without the registry, the three goal-transfer modes, the four source-goal modes, both failure paths, and both the goal and no-goal file shapes.
 
 The idle auto-writer treats the refusal as "not yet": it releases its cooldown reservation (`lastAuto`), so the handoff fires on the next idle event after the job settles instead of being held back for the whole cooldown window.
 

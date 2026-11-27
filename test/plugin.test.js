@@ -820,3 +820,100 @@ test('plugin: a session without a goal gets no goal section', async (t) => {
   assert.doesNotMatch(content, /## Goal \(from the source session\)/)
   assert.doesNotMatch(content, /goal_objective/)
 })
+
+function makeGoalService({ record, phase = 'active' } = {}) {
+  const calls = []
+  return {
+    calls,
+    service: {
+      get: () => undefined,
+      create: (agent, spec) => {
+        calls.push(['create', spec])
+        return { id: 'goal-new', revision: 1, phase: 'active', activation: 'armed' }
+      },
+      pause: (agent, ref) => {
+        calls.push(['pause', ref])
+        return { id: 'goal-new', revision: 2, phase: 'paused', activation: 'disarmed' }
+      },
+      complete: (agent, ref) => {
+        calls.push(['complete', ref])
+        return { id: ref.id, revision: ref.revision + 1, phase: 'complete', activation: 'disarmed' }
+      },
+      clear: (agent, ref) => {
+        calls.push(['clear', ref])
+        return { id: ref.id, revision: ref.revision + 1 }
+      },
+      record,
+      phase,
+    },
+  }
+}
+
+test('plugin: the source goal is cleared after a successful transfer', async () => {
+  const fake = makeGoalService()
+  const { ctx } = makeCtx({ goals: fake.service })
+  ctx.agents = { get: (sessionId) => ({ session: { id: sessionId } }) }
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  const sourceGoal = { id: 'goal-old', revision: 4, objective: 'Ship it', phase: 'active', roundsStarted: 0, maxGoalRounds: 8 }
+  const transfer = plugin.transferGoal('session-new-1', sourceGoal)
+  assert.deepEqual(transfer, { phase: 'paused', activation: 'disarmed' })
+  assert.equal(plugin.closeSourceGoal({}, sourceGoal), 'clear')
+  assert.deepEqual(fake.calls, [
+    ['create', { objective: 'Ship it', maxGoalRounds: 8 }],
+    ['pause', { id: 'goal-new', revision: 1 }],
+    ['clear', { id: 'goal-old', revision: 4 }],
+  ])
+})
+
+test('plugin: the source goal is only paused in pause mode, and never from a non-active phase', async () => {
+  const fake = makeGoalService()
+  const { ctx } = makeCtx({ goals: fake.service })
+  ctx.agents = { get: (sessionId) => ({ session: { id: sessionId } }) }
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', handoffGoalSource: 'pause' })
+  assert.equal(
+    plugin.closeSourceGoal({}, { id: 'goal-old', revision: 2, objective: 'x', phase: 'active', roundsStarted: 0, maxGoalRounds: 4 }),
+    'pause',
+  )
+  assert.equal(
+    plugin.closeSourceGoal({}, { id: 'goal-old', revision: 3, objective: 'x', phase: 'paused', roundsStarted: 0, maxGoalRounds: 4 }),
+    undefined,
+  )
+  assert.deepEqual(fake.calls, [['pause', { id: 'goal-old', revision: 2 }]])
+})
+
+test('plugin: complete mode marks the source goal complete, keep mode leaves it alone', async () => {
+  const fake = makeGoalService()
+  const { ctx } = makeCtx({ goals: fake.service })
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', handoffGoalSource: 'complete' })
+  assert.equal(
+    plugin.closeSourceGoal({}, { id: 'goal-old', revision: 5, objective: 'x', phase: 'active', roundsStarted: 0, maxGoalRounds: 4 }),
+    'complete',
+  )
+  assert.deepEqual(fake.calls, [['complete', { id: 'goal-old', revision: 5 }]])
+
+  const keepPlugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', handoffGoalSource: 'keep' })
+  fake.calls.length = 0
+  assert.equal(
+    keepPlugin.closeSourceGoal({}, { id: 'goal-old', revision: 5, objective: 'x', phase: 'active', roundsStarted: 0, maxGoalRounds: 4 }),
+    undefined,
+  )
+  assert.deepEqual(fake.calls, [])
+})
+
+test('plugin: a source goal that cannot be closed never fails the handoff', async () => {
+  const goals = {
+    get: () => undefined,
+    create: () => ({ id: 'goal-new', revision: 1, phase: 'active', activation: 'armed' }),
+    pause: () => ({ id: 'goal-new', revision: 2, phase: 'paused', activation: 'disarmed' }),
+    clear: () => {
+      throw new Error('goal "old" belongs to another agent')
+    },
+  }
+  const { ctx } = makeCtx({ goals })
+  ctx.agents = { get: (sessionId) => ({ session: { id: sessionId } }) }
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  assert.equal(
+    plugin.closeSourceGoal({}, { id: 'goal-old', revision: 2, objective: 'x', phase: 'active', roundsStarted: 0, maxGoalRounds: 4 }),
+    undefined,
+  )
+})
