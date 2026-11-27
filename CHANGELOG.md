@@ -14,6 +14,8 @@ This is subscription only: nothing is wrapped, proxied, or replaced, and the buf
 
 A `fetch` that rejects before the dispatcher — an unusable argument, a refused connection, a dead socket — leaves no channel event at all. That gap is closed for the one window that matters: while the new session's first turn runs, the plugin observes the global `fetch`, calls it with the same arguments, records a rejection together with its cause chain, and rethrows the very same error object. The observation is removed on the first `turn/end` of that session and by a three-minute timer, whichever comes first.
 
+Before the first prompt is delivered, the plugin also asks the route one throwaway question over both call paths: `llm.prepareCall(...)` + `stream` (the path a turn takes, through a freshly listed connection) and `llm.stream(...)` (the path the digest and the session title take, through the cached connection). One trivial message, no tools, thirty-second cap. A failure on both proves the call path is at fault; a success on both proves the request content is.
+
 ## [Fork] — 2026-11-26
 
 Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4. The sidebar UI is English, and the handoff's new session is created the way the Web client creates one.
