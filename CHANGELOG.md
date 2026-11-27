@@ -12,11 +12,15 @@ The panel now reads the job registry (`ctx.get('jobs').list(sessionId)`, filtere
 
 ### Added — the goal of the source session travels into the file
 
-A goal is durable per session and its automatic-continuation authority is process-local, so a new session starts with neither: the objective simply stayed in the old chat. The handoff now records the current goal from `ctx.get('goals').get(agent)` — `goal_objective`, `goal_phase`, `goal_rounds`, `goal_max_rounds` in the frontmatter and a `## Goal (from the source session)` section at the end of the body, stating that the new session must re-create the objective with `create_goal` if it wants automatic rounds.
+A goal is durable per session and its automatic-continuation authority is process-local, so a new session starts with neither: the objective simply stayed in the old chat. The handoff now records the current goal from `ctx.get('goals').get(agent)` — `goal_objective`, `goal_phase`, `goal_rounds`, `goal_max_rounds` in the frontmatter and a `## Goal (from the source session)` section at the end of the body.
 
-The plugin deliberately does not create that goal itself: `goals.create` arms automatic continuation and queues the goal context message, which would race with the resume prompt that is being admitted into the same fresh session.
+### Added — and, when the handoff starts a session, into that session
 
-`test/plugin.test.js` covers the running-job refusal, a composition without the registry, and both the goal and no-goal shapes.
+The new `handoffGoal` config chooses what happens next: `file` (record only), `paused` (the default), or `armed`. In the last two the plugin re-creates the goal in the new session through `ctx.get('goals')`, passing only the remaining round allowance (`maxGoalRounds - roundsStarted`), and records `goal_transferred` / `goal_activation` in the ledger. `paused` creates and then pauses in one synchronous block, so the fresh chat shows an inactive goal that a person resumes deliberately — the same state a restarted session shows — and the round driver, which only schedules at whole-agent idle, never starts work behind the resume prompt. `armed` leaves continuation on. The section of the file states which of the three happened, and the resume prompt is untouched.
+
+A re-creation failure (no `agents` registry, a goal already present, a service that changed shape) is logged and never fails the handoff: the file already carries the objective.
+
+`test/plugin.test.js` covers the running-job refusal, a composition without the registry, the three goal modes, the failed re-creation, and both the goal and no-goal file shapes.
 
 The idle auto-writer treats the refusal as "not yet": it releases its cooldown reservation (`lastAuto`), so the handoff fires on the next idle event after the job settles instead of being held back for the whole cooldown window.
 

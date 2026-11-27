@@ -718,6 +718,94 @@ test('plugin: the goal of the source session travels into the handoff file', asy
   assert.match(content, /goal_objective: "Publish the fork/)
 })
 
+test('plugin: the goal is re-created in the new session and paused', async () => {
+  const calls = []
+  const goals = {
+    get: () => undefined,
+    create: (agent, spec) => {
+      calls.push(['create', agent.session.id, spec])
+      return { id: 'goal-new', revision: 1, phase: 'active', activation: 'armed' }
+    },
+    pause: (agent, ref) => {
+      calls.push(['pause', agent.session.id, ref])
+      return { id: 'goal-new', revision: 2, phase: 'paused', activation: 'disarmed' }
+    },
+  }
+  const { ctx } = makeCtx({ goals })
+  ctx.agents = { get: (sessionId) => ({ session: { id: sessionId } }) }
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', handoffGoal: 'paused' })
+  const result = plugin.transferGoal('session-new-1', {
+    id: 'goal-old',
+    objective: 'Ship the fork',
+    phase: 'active',
+    roundsStarted: 2,
+    maxGoalRounds: 8,
+    activation: 'disarmed',
+  })
+  assert.deepEqual(result, { phase: 'paused', activation: 'disarmed' })
+  // Only the remaining allowance moves: the spent rounds belong to the old session.
+  assert.deepEqual(calls, [
+    ['create', 'session-new-1', { objective: 'Ship the fork', maxGoalRounds: 6 }],
+    ['pause', 'session-new-1', { id: 'goal-new', revision: 1 }],
+  ])
+})
+
+test('plugin: handoffGoal=file leaves the new session without a goal', async () => {
+  const calls = []
+  const goals = {
+    get: () => undefined,
+    create: () => {
+      calls.push('create')
+      return { id: 'goal-new', revision: 1, phase: 'active', activation: 'armed' }
+    },
+    pause: () => {
+      calls.push('pause')
+      return undefined
+    },
+  }
+  const { ctx } = makeCtx({ goals })
+  ctx.agents = { get: (sessionId) => ({ session: { id: sessionId } }) }
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', handoffGoal: 'file' })
+  assert.equal(
+    plugin.transferGoal('session-new-1', { objective: 'x', phase: 'active', roundsStarted: 0, maxGoalRounds: 4 }),
+    undefined,
+  )
+  assert.deepEqual(calls, [])
+})
+
+test('plugin: a goal that cannot be re-created never fails the handoff', async () => {
+  const goals = {
+    get: () => undefined,
+    create: () => {
+      throw new Error('goal "x" already exists with phase "active"')
+    },
+  }
+  const { ctx } = makeCtx({ goals })
+  ctx.agents = { get: (sessionId) => ({ session: { id: sessionId } }) }
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', handoffGoal: 'paused' })
+  assert.equal(
+    plugin.transferGoal('session-new-1', { objective: 'x', phase: 'active', roundsStarted: 0, maxGoalRounds: 4 }),
+    undefined,
+  )
+})
+
+test('plugin: handoffGoal=armed re-creates the goal without pausing it', async () => {
+  const goals = {
+    get: () => undefined,
+    create: () => ({ id: 'goal-new', revision: 1, phase: 'active', activation: 'armed' }),
+    pause: () => {
+      throw new Error('pause must not run in armed mode')
+    },
+  }
+  const { ctx } = makeCtx({ goals })
+  ctx.agents = { get: (sessionId) => ({ session: { id: sessionId } }) }
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', handoffGoal: 'armed' })
+  assert.deepEqual(
+    plugin.transferGoal('session-new-1', { objective: 'x', phase: 'active', roundsStarted: 0, maxGoalRounds: 4 }),
+    { phase: 'active', activation: 'armed' },
+  )
+})
+
 test('plugin: a session without a goal gets no goal section', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-no-goal-'))
   t.after(() => rm(root, { recursive: true, force: true }))
