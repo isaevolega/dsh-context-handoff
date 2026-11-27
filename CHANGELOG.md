@@ -4,11 +4,11 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-27
 
-### Fixed — the digest no longer loses its text to reasoning
+### Changed — the digest asks for reasoning off
 
-The summarization call runs on the session's route, so it inherits that route's reasoning effort. With `reasoningEffort: high` the model spent the whole `maxTokens` cap on thinking and streamed no text at all: the fallback reason was `the summarization model returned no text (finish stop, 0 output tokens)`, and on the unpatched path that empty answer also erased the deterministic digest. Every handoff on such a route degraded to a summary without content.
+The summary runs on the session's route, so it inherits that route's reasoning effort. Measured against the real route (`deepseek-account/deepseek-flash`, `reasoningEffort: high`): a 40k-token summarization request with the handoff's own output cap (1738 tokens) spent 1358 of them on thinking, wrote text only after the thinking stopped, and finished with `max_tokens` at 1577 characters of answer. A slightly longer chain of thought leaves no room for text at all, which is the shape the ledger recorded — `the summarization model returned no text`, 0 output tokens, and an empty body.
 
-`streamSummary()` now passes `reasoningEffort` through, and `generate()` asks for `"off"` first — a summary needs no chain-of-thought, and thinking tokens are billed against the output cap. When the route rejects the control with `UNSUPPORTED_REASONING_EFFORT` the plugin retries once without it, so providers without a reasoning switch still get a model-written digest. The fallback reason also names the reasoning characters the stream produced, which separates "the model thought until the cap" from "the stream died early".
+A summary never needs chain-of-thought, so `streamSummary()` now passes `reasoningEffort` through and `generate()` asks for `"off"` first. The same request with thinking off finished in 639 output tokens, well inside the cap. When a route rejects the control with `UNSUPPORTED_REASONING_EFFORT` the plugin retries once without it, so providers that have no reasoning switch still get a model-written digest. The fallback reason also names the reasoning characters the stream produced, which separates "the model thought until the cap" from "the stream died early".
 
 `test/plugin.test.js` covers both paths: the request carries `reasoningEffort: "off"`, and a route that throws `UNSUPPORTED_REASONING_EFFORT` still produces `generator: llm` on the second attempt.
 
