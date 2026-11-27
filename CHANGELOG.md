@@ -4,6 +4,20 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-27
 
+### Added — the handoff button waits for background jobs
+
+A background job belongs to the agent that started it: creating a new session neither carries it over nor stops it, its output stays in the old chat, and disposing that agent (`owner disposed`) cancels it. Handing off while one ran therefore abandoned the job silently.
+
+The panel now reads the job registry (`ctx.get('jobs').list(sessionId)`, filtered to the session's own `running`/`stopping` jobs) and disables both write buttons with "Waiting for the background job", plus a line naming the job ids and the `job_kill` hint. `generate()` refuses the same case with `HANDOFF_BUSY` (HTTP 409) so an API call made between a poll and a click cannot slip through. A composition without the registry, or one whose list shape changed, reports no jobs: the guard must never break a handoff by accident.
+
+### Added — the goal of the source session travels into the file
+
+A goal is durable per session and its automatic-continuation authority is process-local, so a new session starts with neither: the objective simply stayed in the old chat. The handoff now records the current goal from `ctx.get('goals').get(agent)` — `goal_objective`, `goal_phase`, `goal_rounds`, `goal_max_rounds` in the frontmatter and a `## Goal (from the source session)` section at the end of the body, stating that the new session must re-create the objective with `create_goal` if it wants automatic rounds.
+
+The plugin deliberately does not create that goal itself: `goals.create` arms automatic continuation and queues the goal context message, which would race with the resume prompt that is being admitted into the same fresh session.
+
+`test/plugin.test.js` covers the running-job refusal, a composition without the registry, and both the goal and no-goal shapes.
+
 ### Changed — the digest asks for reasoning off
 
 The summary runs on the session's route, so it inherits that route's reasoning effort. Measured against the real route (`deepseek-account/deepseek-flash`, `reasoningEffort: high`): a 40k-token summarization request with the handoff's own output cap (1738 tokens) spent 1358 of them on thinking, wrote text only after the thinking stopped, and finished with `max_tokens` at 1577 characters of answer. A slightly longer chain of thought leaves no room for text at all, which is the shape the ledger recorded — `the summarization model returned no text`, 0 output tokens, and an empty body.

@@ -237,6 +237,8 @@ The two throwaway route probes are opt-in: start DSH with `DSH_HANDOFF_PROBE=1` 
 
 **Digest request.** The summary runs on the session's own route, so it inherits that route's reasoning effort, and thinking is billed against the output cap the digest was given. On this profile (`deepseek-flash`, `reasoningEffort: high`) a 40k-token summarization request spent 1358 of its 1738 output tokens on thinking and then ran out of room before writing anything. The digest now asks for `reasoningEffort: "off"` and retries once without that control when the route answers `UNSUPPORTED_REASONING_EFFORT`, so a provider that has no reasoning switch still gets its summary.
 
+**Background jobs and goals.** A background job belongs to the agent that started it, so a new session neither inherits it nor stops it: its output stays in the old chat and disposing that agent cancels it. Both write buttons are therefore disabled while the session has a `running` job, and the route refuses the same case (409) for a call that slips between a poll and a click. A goal is durable per session, so the handoff records the current objective, phase, and round count in the frontmatter and a `## Goal (from the source session)` section; the new session re-creates it with `create_goal` if it wants automatic continuation, because creating it during the handoff would arm automatic rounds against the resume prompt.
+
 The panel reports the new session and its creation path, e.g. `New session: session-… · created via session controller`.
 
 To pull upstream changes into a clone of this fork:

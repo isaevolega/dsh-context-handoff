@@ -27,7 +27,7 @@ function makeMeter() {
   }
 }
 
-function makeCtx({ stream, resolveModelInfo } = {}) {
+function makeCtx({ stream, resolveModelInfo, jobs, goals } = {}) {
   const registered = []
   const calls = { stream: [] }
   const llm = {
@@ -62,7 +62,9 @@ function makeCtx({ stream, resolveModelInfo } = {}) {
         while (!step.done) step = result.next()
       }
     },
-    get() {
+    get(name) {
+      if (name === 'jobs') return jobs
+      if (name === 'goals') return goals
       return undefined
     },
     on() {
@@ -629,4 +631,88 @@ test('plugin: a rejected /compact falls back to the handoff', async (t) => {
   await plugin.maybeAuto(agent)
 
   assert.equal((await readdir(path.join(root, '.dsh/handoff'))).filter((name) => name.endsWith('.md')).length, 1)
+})
+
+test('plugin: refuses to hand off while a background job of this session is running', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-running-job-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const jobs = {
+    list: (sessionId) => [
+      { id: 'cmd-abc', label: 'npm test', status: 'running', owner: sessionId },
+      { id: 'cmd-done', label: 'old build', status: 'completed', owner: sessionId },
+      // Ownerless host work is not the user's and must not block the panel.
+      { id: 'host-1', status: 'running' },
+    ],
+  }
+  const { ctx, registered } = makeCtx({ jobs })
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  const agent = makeAgent(root)
+
+  assert.deepEqual(plugin.runningJobs(agent.session.id), [{ id: 'cmd-abc', label: 'npm test', status: 'running' }])
+
+  const result = await registered[0].handler({ agent, rawInput: 'now', signal: new AbortController().signal })
+  assert.equal(result.kind, 'error')
+  assert.match(result.text, /background job is still running/)
+  assert.match(result.text, /cmd-abc "npm test"/)
+  assert.match(result.text, /job_kill/)
+  await assert.rejects(readdir(path.join(root, '.dsh/handoff')), /ENOENT/)
+})
+
+test('plugin: a composition without the job registry still hands off', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-no-jobs-service-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, registered } = makeCtx()
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  assert.deepEqual(plugin.runningJobs('sess-handoff-1234'), [])
+  const result = await registered[0].handler({ agent: makeAgent(root), rawInput: 'now', signal: new AbortController().signal })
+  assert.equal(result.kind, 'success')
+})
+
+test('plugin: the goal of the source session travels into the handoff file', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-goal-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const goals = {
+    get: () => ({
+      id: 'goal-1',
+      revision: 3,
+      objective: 'Publish the fork and prove the button works end to end',
+      phase: 'active',
+      maxGoalRounds: 8,
+      roundsStarted: 2,
+      activation: 'disarmed',
+    }),
+  }
+  const { ctx, registered } = makeCtx({ goals })
+  new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  const agent = makeAgent(root)
+  const result = await registered[0].handler({ agent, rawInput: 'now', signal: new AbortController().signal })
+  assert.equal(result.kind, 'success')
+
+  const dir = path.join(root, '.dsh/handoff')
+  const file = (await readdir(dir)).find((name) => name.endsWith('.md'))
+  const content = await readFile(path.join(dir, file), 'utf8')
+  const meta = await readHandoffMeta(path.join(dir, file))
+  assert.equal(meta.goal_phase, 'active')
+  assert.equal(meta.goal_rounds, 2)
+  assert.equal(meta.goal_max_rounds, 8)
+  assert.match(content, /## Goal \(from the source session\)/)
+  assert.match(content, /Publish the fork and prove the button works end to end/)
+  assert.match(content, /rounds 2\/8/)
+  assert.match(content, /create_goal/)
+  assert.match(content, /goal_objective: "Publish the fork/)
+})
+
+test('plugin: a session without a goal gets no goal section', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-no-goal-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const goals = { get: () => undefined }
+  const { ctx, registered } = makeCtx({ goals })
+  new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  const agent = makeAgent(root)
+  await registered[0].handler({ agent, rawInput: 'now', signal: new AbortController().signal })
+  const dir = path.join(root, '.dsh/handoff')
+  const file = (await readdir(dir)).find((name) => name.endsWith('.md'))
+  const content = await readFile(path.join(dir, file), 'utf8')
+  assert.doesNotMatch(content, /## Goal \(from the source session\)/)
+  assert.doesNotMatch(content, /goal_objective/)
 })
