@@ -8,7 +8,11 @@ import ContextHandoff from '../lib/index.js'
 
 const messages = [
   { role: 'system', content: [{ type: 'text', text: 'You are a coding agent.' }] },
-  { role: 'user', content: [{ type: 'text', text: 'Build a token-aware handoff plugin with tests.' }] },
+  {
+    role: 'user',
+    content: [{ type: 'text', text: 'Build a token-aware handoff plugin with tests.' }],
+    source: { kind: 'user', rpcId: 'rpc-1', clientTimeZone: 'Asia/Yekaterinburg' },
+  },
   { role: 'assistant', content: [{ type: 'text', text: 'Implemented and tested.' }] },
 ]
 
@@ -224,6 +228,7 @@ test('a handoff session is created through the session controller', async (t) =>
   const { ctx, plugin, agent, created } = makeWorld(root, { promptTokens: 120000, recommendAtRatio: 0.55 })
   const requests = []
   const selections = []
+  const prompts = []
   const followups = []
   const newAgent = {
     session: { id: 'session-created-by-controller', header: { cwd: root } },
@@ -241,6 +246,10 @@ test('a handoff session is created through the session controller', async (t) =>
         async selectModel(request) {
           selections.push(request)
           return { selected: { provider: request.provider, model: request.model } }
+        },
+        async prompt(request) {
+          prompts.push(request)
+          return { accepted: true }
         },
       }
     }
@@ -264,8 +273,14 @@ test('a handoff session is created through the session controller', async (t) =>
   assert.equal(created.options, undefined)
   // The plugin never picks a model: the controller's deployment default stands.
   assert.equal(selections.length, 0)
-  assert.equal(followups.length, 1)
-  assert.match(followups[0].content[0].text, /^Handoff file: \.dsh\/handoff\//)
+  // The first prompt is admitted the way a typed one is, not pushed into the inbox raw.
+  assert.equal(prompts.length, 1)
+  assert.equal(prompts[0].sessionId, 'session-created-by-controller')
+  assert.equal(prompts[0].mode, 'queue')
+  assert.ok(typeof prompts[0].requestId === 'string' && prompts[0].requestId.length > 0)
+  assert.equal(prompts[0].clientTimeZone, 'Asia/Yekaterinburg')
+  assert.match(prompts[0].content[0].text, /^Handoff file: \.dsh\/handoff\//)
+  assert.equal(followups.length, 0)
 })
 
 test('the bare fallback mounts the default preset and attaches the workspace', async (t) => {

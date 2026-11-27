@@ -223,7 +223,7 @@ This fork creates the session through the host session controller — `sessionCo
 
 The model is left alone. The plugin never calls `selectModel`: the new session keeps the deployment default, exactly like a hand-written "+ new chat", so it cannot spend your balance on a route you did not pick.
 
-The injected first message names the handoff file as a plain workspace-relative path. An `@` reference is a composer feature — the client stages the file and registers a receipt — and a host-injected message never passes that registration, so the `@` form stays only in the instruction the panel prints for a person.
+The first prompt is admitted through `sessionController.prompt`, the RPC the composer calls, so the new session's first turn has the same shape as a typed one: a user-rpc source, the conversation's own time zone, and the host's runtime context, skill catalog, and time note as structured context parts. The message names the handoff file as a plain workspace-relative path — an `@` reference is a composer feature that a host-injected message never registers, so the `@` form stays only in the instruction the panel prints for a person.
 
 **Diagnostics.** If a handoff session fails its first turn, `<workspace>/.dsh/handoff/diagnostics.log` records how the session was created (path, workspace, source session) and the error chain of the failed turn. The plugin only listens to agent events and writes files; it never wraps or replaces a host service.
 
