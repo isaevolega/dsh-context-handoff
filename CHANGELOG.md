@@ -4,6 +4,12 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-27
 
+### Fixed — the title and the mission skip host-injected first turns
+
+A compacted session starts with the checkpoint the host writes at the first user position, so the handoff was titled `# Handoff: This is an automatically generated checkpoint condensing an earlier span` and its mission quoted that checkpoint. The same happened to a runtime context, a skill catalog, the time note, and a workspace memo.
+
+`extractTitle()` and the fallback digest's mission now take the first user turn that is the human's own request: a turn whose `source.kind` is set and is not `user` is skipped, as is a turn whose text starts with a host banner (`<system-reminder>`, `<workspace_memory>`, the compaction preamble). `test/digest.test.js` covers a compacted conversation and a runtime-context turn.
+
 ### Fixed — an empty model answer no longer ships an empty handoff
 
 A handoff whose summary came back as an empty string was written with its frontmatter, the resume card, and the `# Handoff: …` heading, and nothing else: no mission, no next steps. The deterministic fallback never ran.

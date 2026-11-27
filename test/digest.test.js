@@ -72,6 +72,37 @@ test('extractTitle uses the first user request', () => {
   assert.equal(extractTitle([], 'sess-12345678'), 'Session sess-123')
 })
 
+test('extractTitle and the mission skip host-injected first turns', () => {
+  // What a compacted session looks like: the checkpoint the host wrote at the
+  // first user position, then the human's actual request. The checkpoint used
+  // to become the handoff title and the mission statement.
+  const compacted = [
+    { role: 'system', content: [{ type: 'text', text: 'You are a coding agent.' }] },
+    {
+      role: 'user',
+      source: { kind: 'compact-checkpoint' },
+      content: [{ type: 'text', text: 'This is an automatically generated checkpoint condensing an earlier span of the conversation.' }],
+    },
+    { role: 'user', content: [{ type: 'text', text: 'Ship the English sidebar and publish the fork.' }] },
+  ]
+  assert.equal(extractTitle(compacted, 'sess-123'), 'Ship the English sidebar and publish the fork.')
+  const body = buildFallbackBody({
+    title: 'Fork release',
+    messages: compacted,
+    language: 'en',
+    stats: { promptTokens: 120000, created: '2026-01-01T00:00:00.000Z' },
+  })
+  assert.match(body, /## Mission\n\nShip the English sidebar and publish the fork\./)
+  assert.doesNotMatch(body, /## Mission\n\nThis is an automatically generated checkpoint/)
+
+  // A runtime-context turn is skipped too, by its source kind alone.
+  const contextual = [
+    { role: 'user', source: { kind: 'runtime-context' }, content: [{ type: 'text', text: 'You are in workspace X.' }] },
+    { role: 'user', content: [{ type: 'text', text: 'Fix the failing transport.' }] },
+  ]
+  assert.equal(extractTitle(contextual, 'sess-123'), 'Fix the failing transport.')
+})
+
 test('sanitizeModelMarkdown removes a wrapping fence and preamble', () => {
   assert.equal(sanitizeModelMarkdown('```markdown\n# Handoff\n\nbody\n```'), '# Handoff\n\nbody')
   assert.equal(sanitizeModelMarkdown('Here is the handoff:\n\n# Handoff\n\nbody'), '# Handoff\n\nbody')
