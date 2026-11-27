@@ -2,6 +2,16 @@
 
 All notable changes to `dsh-context-handoff` are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Fork] — 2026-11-27
+
+### Added — raw transport diagnostics
+
+`DeepSeek Messages transport failed` reaches the session log without its cause: `@deepseek-ai/dsh-llm` converts every adapter throw into a terminal `{message, code}` failure chunk (`adapterFailureChunk` → `normalizeLlmFailure`), so `agent/error` only ever rebuilds a bare `LlmError`.
+
+`lib/index.js` now subscribes to the Node `diagnostics_channel` events that the global `fetch` (undici) publishes — `undici:request:create`, `undici:request:headers`, `undici:request:error`, `undici:client:connectError` — and keeps a bounded ring buffer of the raw records for `api.deepseek.com`. On every `turn/end` of a session this plugin created (failed or not) the buffer is appended to `<workspace>/.dsh/handoff/diagnostics.log`.
+
+This is subscription only: nothing is wrapped, proxied, or replaced, and the buffer is dropped with the effect scope. It answers the one question the session log cannot: did the request leave the process, and if it did not, which fetch error stopped it.
+
 ## [Fork] — 2026-11-26
 
 Fork of [idianzi/dsh-context-handoff](https://github.com/idianzi/dsh-context-handoff) at 0.3.4. The sidebar UI is English, and the handoff's new session is created the way the Web client creates one.
