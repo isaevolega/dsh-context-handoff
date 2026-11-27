@@ -658,6 +658,22 @@ test('plugin: refuses to hand off while a background job of this session is runn
   await assert.rejects(readdir(path.join(root, '.dsh/handoff')), /ENOENT/)
 })
 
+test('plugin: auto handoff waits for a running background job instead of burning its cooldown', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-auto-job-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const state = { tokens: 120000 }
+  const jobs = { list: (sessionId) => [{ id: 'cmd-busy', status: 'running', owner: sessionId }] }
+  const { ctx } = makeCtx({ jobs })
+  ctx.tokenMeter = makeMutableMeter(state)
+  const plugin = new ContextHandoff(ctx, { outputDir: '.dsh/handoff', auto: true, autoCooldownMinutes: 30 })
+  const agent = makeAgent(root)
+
+  await plugin.maybeAuto(agent)
+  await assert.rejects(readdir(path.join(root, '.dsh/handoff')), /ENOENT/)
+  assert.equal(plugin.lastAuto.has(agent.session.id), false)
+})
+
+
 test('plugin: a composition without the job registry still hands off', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-no-jobs-service-'))
   t.after(() => rm(root, { recursive: true, force: true }))
