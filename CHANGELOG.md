@@ -4,6 +4,18 @@ All notable changes to `dsh-context-handoff` are documented here. The format fol
 
 ## [Fork] — 2026-11-27
 
+### Fixed — the digest no longer loses its text to reasoning
+
+The summarization call runs on the session's route, so it inherits that route's reasoning effort. With `reasoningEffort: high` the model spent the whole `maxTokens` cap on thinking and streamed no text at all: the fallback reason was `the summarization model returned no text (finish stop, 0 output tokens)`, and on the unpatched path that empty answer also erased the deterministic digest. Every handoff on such a route degraded to a summary without content.
+
+`streamSummary()` now passes `reasoningEffort` through, and `generate()` asks for `"off"` first — a summary needs no chain-of-thought, and thinking tokens are billed against the output cap. When the route rejects the control with `UNSUPPORTED_REASONING_EFFORT` the plugin retries once without it, so providers without a reasoning switch still get a model-written digest. The fallback reason also names the reasoning characters the stream produced, which separates "the model thought until the cap" from "the stream died early".
+
+`test/plugin.test.js` covers both paths: the request carries `reasoningEffort: "off"`, and a route that throws `UNSUPPORTED_REASONING_EFFORT` still produces `generator: llm` on the second attempt.
+
+### Changed — the route probes are opt-in
+
+The two throwaway model calls that probed both LLM call paths before the first prompt answered their question (both paths returned 200; the failure was the signal the admission call never received), and they cost two extra requests per handoff. They now run only when DSH starts with `DSH_HANDOFF_PROBE=1`.
+
 ### Fixed — the title and the mission skip host-injected first turns
 
 A compacted session starts with the checkpoint the host writes at the first user position, so the handoff was titled `# Handoff: This is an automatically generated checkpoint condensing an earlier span` and its mission quoted that checkpoint. The same happened to a runtime context, a skill catalog, the time note, and a workspace memo.

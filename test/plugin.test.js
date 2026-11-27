@@ -225,6 +225,50 @@ test('plugin: an empty model answer still writes the deterministic digest', asyn
   assert.ok(meta.digest_tokens > 0)
 })
 
+test('plugin: the digest asks for reasoning off so the summary is not all thinking', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-reasoning-off-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, registered, calls } = makeCtx()
+  new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  const agent = makeAgent(root)
+  const result = await registered[0].handler({ agent, rawInput: 'now', signal: new AbortController().signal })
+  assert.equal(result.kind, 'success')
+  assert.equal(calls.stream.length, 1)
+  assert.equal(calls.stream[0].reasoningEffort, 'off')
+  const dir = path.join(root, '.dsh/handoff')
+  const file = (await readdir(dir)).find((name) => name.endsWith('.md'))
+  const meta = await readHandoffMeta(path.join(dir, file))
+  assert.equal(meta.generator, 'llm')
+})
+
+test('plugin: a route without a reasoning control still produces a summary', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-no-reasoning-control-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { ctx, registered, calls } = makeCtx({
+    stream: async function* (options) {
+      if (options.reasoningEffort !== undefined) {
+        const error = new Error('provider "test" model "test" does not support reasoning effort "off"')
+        error.code = 'UNSUPPORTED_REASONING_EFFORT'
+        throw error
+      }
+      yield { type: 'text-delta', text: '# Handoff: Token plugin\n\n## Mission\nBuild it.\n\n## Next steps\n- Run tests.' }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    },
+  })
+  new ContextHandoff(ctx, { outputDir: '.dsh/handoff' })
+  const agent = makeAgent(root)
+  const result = await registered[0].handler({ agent, rawInput: 'now', signal: new AbortController().signal })
+  assert.equal(result.kind, 'success')
+  assert.equal(calls.stream.length, 2)
+  assert.equal(calls.stream[0].reasoningEffort, 'off')
+  assert.equal(calls.stream[1].reasoningEffort, undefined)
+  assert.match(result.text, /generator: llm/)
+  const dir = path.join(root, '.dsh/handoff')
+  const file = (await readdir(dir)).find((name) => name.endsWith('.md'))
+  const meta = await readHandoffMeta(path.join(dir, file))
+  assert.equal(meta.generator, 'llm')
+})
+
 test('plugin: redacts credentials from the written file', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-handoff-redact-'))
   t.after(() => rm(root, { recursive: true, force: true }))

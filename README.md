@@ -233,6 +233,10 @@ That call took three attempts to get right, and the reason is worth recording: `
 
 For the one window that matters — the new session's first turn — the plugin also observes the global `fetch` itself, because a rejection that happens before the dispatcher leaves no channel event at all. That observation calls `fetch` with the very same arguments, records the rejection with its cause chain, and rethrows the identical error object; it is removed on the first `turn/end` of that session and by a three-minute timer. Nothing else in the process sees a different `fetch`.
 
+The two throwaway route probes are opt-in: start DSH with `DSH_HANDOFF_PROBE=1` to ask the route one trivial question over both LLM call paths before the first prompt. They spend two model calls per handoff, so they are off by default and only useful while a first-turn transport failure is still unexplained.
+
+**Digest request.** The summary runs on the session's own route, so it inherits that route's reasoning effort. With a high effort the model can spend the whole `maxTokens` cap thinking and finish without a single text delta; the handoff then fell back to the deterministic digest. The digest now asks for `reasoningEffort: "off"` and retries once without that control when the route answers `UNSUPPORTED_REASONING_EFFORT`, so a provider that has no reasoning switch still gets its summary.
+
 The panel reports the new session and its creation path, e.g. `New session: session-… · created via session controller`.
 
 To pull upstream changes into a clone of this fork:
